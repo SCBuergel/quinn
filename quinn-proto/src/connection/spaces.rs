@@ -60,6 +60,10 @@ pub(super) struct PacketSpace {
     /// exceeding the reordering window in time. Only set for packets numbered prior to a packet
     /// that has been acknowledged.
     pub(super) loss_time: Option<Instant>,
+    /// Packets declared lost lately, by number: when they were sent and the largest acknowledged packet when
+    /// they were given up. An acknowledgement that covers one later shows the loss was spurious and how far the
+    /// packet was reordered (`PathData::reorder_*`).
+    pub(super) recently_lost: BTreeMap<u64, (Instant, u64)>,
     /// Number of tail loss probes to send
     pub(super) loss_probes: u32,
     pub(super) ping_pending: bool,
@@ -92,6 +96,7 @@ impl PacketSpace {
 
             time_of_last_ack_eliciting_packet: None,
             loss_time: None,
+            recently_lost: BTreeMap::new(),
             loss_probes: 0,
             ping_pending: false,
             immediate_ack_pending: false,

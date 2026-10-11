@@ -40,6 +40,10 @@ pub(super) struct PathData {
     /// Used in persistent congestion determination.
     pub(super) first_packet_after_rtt_sample: Option<(SpaceId, u64)>,
     pub(super) in_flight: InFlight,
+    /// Reordering seen on this path (packets acknowledged after being declared lost): the largest distance in
+    /// packet numbers and the longest time in flight. With `adaptive_reordering` loss detection tolerates it.
+    pub(super) reorder_packets: u64,
+    pub(super) reorder_time: Duration,
     /// Number of the first packet sent on this path
     ///
     /// Used to determine whether a packet was sent on an earlier path. Insufficient to determine if
@@ -100,6 +104,8 @@ impl PathData {
                 ),
             first_packet_after_rtt_sample: None,
             in_flight: InFlight::new(),
+            reorder_packets: 0,
+            reorder_time: Duration::ZERO,
             first_packet: None,
             #[cfg(feature = "qlog")]
             recovery_metrics: RecoveryMetrics::default(),
@@ -129,6 +135,8 @@ impl PathData {
             mtud: prev.mtud.clone(),
             first_packet_after_rtt_sample: prev.first_packet_after_rtt_sample,
             in_flight: InFlight::new(),
+            reorder_packets: 0,
+            reorder_time: Duration::ZERO,
             first_packet: None,
             #[cfg(feature = "qlog")]
             recovery_metrics: prev.recovery_metrics.clone(),

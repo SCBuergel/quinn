@@ -153,6 +153,12 @@ pub struct PathStats {
     pub lost_plpmtud_probes: u64,
     /// The number of times a black hole was detected in the path
     pub black_holes_detected: u64,
+    /// Packets acknowledged after they had been declared lost (reordered, not lost)
+    pub spurious_losses: u64,
+    /// Reordering the path has shown, in packet numbers (`adaptive_reordering`)
+    pub reorder_packets: u64,
+    /// Reordering the path has shown, in time (`adaptive_reordering`)
+    pub reorder_time: Duration,
     /// Largest UDP payload size the path currently supports
     pub current_mtu: u16,
 }

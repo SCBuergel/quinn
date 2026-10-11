@@ -1463,6 +1463,29 @@ impl Connection {
             }
         }
 
+        if self.config.adaptive_reordering && !self.spaces[space].recently_lost.is_empty() {
+            // Acknowledgements of packets already given up: spurious losses, which show how far this path
+            // reorders. Loss detection tolerates at least that from now on (see `detect_lost_packets`).
+            let mut spurious = Vec::new();
+            for range in ack.iter() {
+                spurious.extend(self.spaces[space].recently_lost.range(range).map(|(&pn, &v)| (pn, v)));
+            }
+            for (pn, (time_sent, largest_at_loss)) in spurious {
+                self.spaces[space].recently_lost.remove(&pn);
+                self.spaces[space].recently_lost.retain(|&k, _| k > pn.saturating_sub(100_000));
+                let packets = largest_at_loss.saturating_sub(pn) + 1;
+                let time = now.saturating_duration_since(time_sent);
+                self.path.reorder_packets = cmp::max(self.path.reorder_packets, packets);
+                self.path.reorder_time = cmp::max(self.path.reorder_time, time);
+                self.stats.path.spurious_losses += 1;
+                trace!(
+                    "spurious loss of packet {pn}: acknowledged after {time:?}, reordered by {packets} packets"
+                );
+            }
+            self.stats.path.reorder_packets = self.path.reorder_packets;
+            self.stats.path.reorder_time = self.path.reorder_time;
+        }
+
         if newly_acked.is_empty() {
             return Ok(());
         }
@@ -1661,14 +1684,20 @@ impl Connection {
         let mut lost_mtu_probe = None;
         let in_flight_mtu_probe = self.path.mtud.in_flight_mtu_probe();
         let rtt = self.path.rtt.conservative();
-        let loss_delay = cmp::max(
+        let mut loss_delay = cmp::max(
             rtt.mul_f32(self.config.time_threshold)
                 + self.path.rtt.var().mul_f32(self.config.loss_delay_rtt_var_factor),
             TIMER_GRANULARITY,
         );
+        let mut packet_threshold = self.config.packet_threshold as u64;
+        if self.config.adaptive_reordering {
+            // Reordering the path has shown is not loss; a late acknowledgement of a packet given up far
+            // past what the RTT warrants (a stall, not jitter) is capped so recovery never waits for ages.
+            loss_delay = cmp::max(loss_delay, cmp::min(self.path.reorder_time, rtt * 4));
+            packet_threshold = cmp::max(packet_threshold, self.path.reorder_packets);
+        }
 
         let largest_acked_packet = self.spaces[pn_space].largest_acked_packet.unwrap();
-        let packet_threshold = self.config.packet_threshold as u64;
         let mut size_of_lost_packets = 0u64;
 
         // InPersistentCongestion: Determine if all packets in the time period before the newest
@@ -1746,6 +1775,13 @@ impl Connection {
 
             for &packet in &lost_packets {
                 let info = self.spaces[pn_space].take(packet).unwrap(); // safe: lost_packets is populated just above
+                if self.config.adaptive_reordering {
+                    let recent = &mut self.spaces[pn_space].recently_lost;
+                    recent.insert(packet, (info.time_sent, largest_acked_packet));
+                    while recent.len() > 4096 {
+                        recent.pop_first();
+                    }
+                }
                 self.config.qlog_sink.emit_packet_lost(
                     packet,
                     &info,

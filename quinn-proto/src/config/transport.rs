@@ -36,6 +36,7 @@ pub struct TransportConfig {
     pub(crate) packet_threshold: u32,
     pub(crate) time_threshold: f32,
     pub(crate) loss_delay_rtt_var_factor: f32,
+    pub(crate) adaptive_reordering: bool,
     pub(crate) initial_rtt: Duration,
     pub(crate) initial_mtu: u16,
     pub(crate) min_mtu: u16,
@@ -177,6 +178,18 @@ impl TransportConfig {
     /// well below what the path carries. Default 0 (the RFC 9002 behaviour); 4 is the PTO's multiple.
     pub fn loss_delay_rtt_var_factor(&mut self, value: f32) -> &mut Self {
         self.loss_delay_rtt_var_factor = value;
+        self
+    }
+
+    /// Learn the path's reordering from spurious losses.
+    ///
+    /// A packet acknowledged after it was declared lost was reordered, not lost. With this on, the
+    /// connection remembers how far such packets were reordered (in packet numbers and in time) and
+    /// never declares a packet lost on less reordering than that again, like TCP's reordering degree
+    /// (RFC 4737 §4.1, Linux `tp->reordering`) and RACK's reordering window (RFC 8985 §6.2). The
+    /// configured `packet_threshold` and the loss delay stay the floor. Default off.
+    pub fn adaptive_reordering(&mut self, value: bool) -> &mut Self {
+        self.adaptive_reordering = value;
         self
     }
 
@@ -384,6 +397,7 @@ impl Default for TransportConfig {
             packet_threshold: 3,
             time_threshold: 9.0 / 8.0,
             loss_delay_rtt_var_factor: 0.0,
+            adaptive_reordering: false,
             initial_rtt: Duration::from_millis(333), // per spec, intentionally distinct from EXPECTED_RTT
             initial_mtu: INITIAL_MTU,
             min_mtu: INITIAL_MTU,
@@ -422,6 +436,7 @@ impl fmt::Debug for TransportConfig {
             packet_threshold,
             time_threshold,
             loss_delay_rtt_var_factor,
+            adaptive_reordering,
             initial_rtt,
             initial_mtu,
             min_mtu,
@@ -452,6 +467,7 @@ impl fmt::Debug for TransportConfig {
             .field("packet_threshold", packet_threshold)
             .field("time_threshold", time_threshold)
             .field("loss_delay_rtt_var_factor", loss_delay_rtt_var_factor)
+            .field("adaptive_reordering", adaptive_reordering)
             .field("initial_rtt", initial_rtt)
             .field("initial_mtu", initial_mtu)
             .field("min_mtu", min_mtu)
