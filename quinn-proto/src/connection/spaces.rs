@@ -585,6 +585,10 @@ impl SendableFrames {
 
 #[derive(Debug)]
 pub(super) struct PendingAcks {
+    /// Packet numbers below this are no longer acknowledged (`subtract_below`)
+    floor: u64,
+    ranges_dropped: u64,
+    late_below_floor: u64,
     /// Whether we should send an ACK immediately, even if that means sending an ACK-only packet
     ///
     /// When `immediate_ack_required` is false, the normal behavior is to send ACK frames only when
@@ -623,6 +627,9 @@ impl PendingAcks {
     fn new() -> Self {
         Self {
             immediate_ack_required: false,
+            floor: 0,
+            ranges_dropped: 0,
+            late_below_floor: 0,
             ack_eliciting_since_last_ack_sent: 0,
             non_ack_eliciting_since_last_ack_sent: 0,
             ack_eliciting_threshold: 1,
@@ -764,6 +771,9 @@ impl PendingAcks {
 
     /// Insert one packet that needs to be acknowledged
     pub(super) fn insert_one(&mut self, packet: u64, now: Instant) {
+        if packet < self.floor {
+            self.late_below_floor += 1;
+        }
         self.ranges.insert_one(packet);
 
         if self.largest_packet.is_none_or(|(pn, _)| packet > pn) {
@@ -772,12 +782,18 @@ impl PendingAcks {
 
         if self.ranges.len() > MAX_ACK_BLOCKS {
             self.ranges.pop_min();
+            self.ranges_dropped += 1;
         }
     }
 
     /// Remove ACKs of packets numbered at or below `max` from the set of pending ACKs
     pub(super) fn subtract_below(&mut self, max: u64) {
         self.ranges.remove(0..(max + 1));
+        self.floor = self.floor.max(max + 1);
+    }
+
+    pub(super) fn diag(&self) -> (u64, u64) {
+        (self.ranges_dropped, self.late_below_floor)
     }
 
     /// Returns the set of currently pending ACK ranges

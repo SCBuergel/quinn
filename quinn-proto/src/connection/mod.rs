@@ -1265,6 +1265,9 @@ impl Connection {
         stats.path.rtt = self.path.rtt.get();
         stats.path.cwnd = self.path.congestion.window();
         stats.path.rtt_var = self.path.rtt.var();
+        let (rd, lb) = self.spaces[SpaceId::Data].pending_acks.diag();
+        stats.path.ack_ranges_dropped = rd;
+        stats.path.late_below_ack_floor = lb;
         stats.path.current_mtu = self.path.mtud.current_mtu();
 
         stats
@@ -1776,6 +1779,16 @@ impl Connection {
 
             for &packet in &lost_packets {
                 let info = self.spaces[pn_space].take(packet).unwrap(); // safe: lost_packets is populated just above
+                debug!(
+                    target: "hopr_quic_loss",
+                    pn = packet,
+                    age_ms = now.saturating_duration_since(info.time_sent).as_millis(),
+                    loss_delay_ms = loss_delay.as_millis(),
+                    dist = largest_acked_packet.saturating_sub(packet),
+                    due_to_ack,
+                    size = info.size,
+                    "packet lost"
+                );
                 if self.config.adaptive_reordering {
                     let recent = &mut self.spaces[pn_space].recently_lost;
                     recent.insert(packet, (info.time_sent, largest_acked_packet));
@@ -2350,6 +2363,7 @@ impl Connection {
                 let is_duplicate = |n| self.spaces[packet.header.space()].dedup.insert(n);
                 if number.is_some_and(is_duplicate) {
                     debug!("discarding possible duplicate packet");
+                    self.stats.path.dedup_dropped += 1;
                     return;
                 } else if self.state.is_handshake() && packet.header.is_short() {
                     // TODO: SHOULD buffer these to improve reordering tolerance.

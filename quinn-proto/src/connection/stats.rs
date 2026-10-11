@@ -155,6 +155,12 @@ pub struct PathStats {
     pub black_holes_detected: u64,
     /// Current RTT variance estimate (RFC 6298 rttvar)
     pub rtt_var: Duration,
+    /// Received packets discarded as duplicates by the packet-number window (reordered past it)
+    pub dedup_dropped: u64,
+    /// Pending ACK ranges dropped because more than the maximum were outstanding
+    pub ack_ranges_dropped: u64,
+    /// Received packets numbered below the ACK floor (acknowledgements already pruned): never acknowledged
+    pub late_below_ack_floor: u64,
     /// Packets acknowledged after they had been declared lost (reordered, not lost)
     pub spurious_losses: u64,
     /// Reordering the path has shown, in packet numbers (`adaptive_reordering`)
