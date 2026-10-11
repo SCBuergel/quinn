@@ -35,6 +35,7 @@ pub struct TransportConfig {
 
     pub(crate) packet_threshold: u32,
     pub(crate) time_threshold: f32,
+    pub(crate) loss_delay_rtt_var_factor: f32,
     pub(crate) initial_rtt: Duration,
     pub(crate) initial_mtu: u16,
     pub(crate) min_mtu: u16,
@@ -164,6 +165,18 @@ impl TransportConfig {
     /// as a factor of RTT
     pub fn time_threshold(&mut self, value: f32) -> &mut Self {
         self.time_threshold = value;
+        self
+    }
+
+    /// Extra reordering tolerance in time space, as a factor of the RTT variance (RFC 6298 `rttvar`),
+    /// added to the `time_threshold` term: `loss_delay = time_threshold * rtt + value * rttvar`.
+    ///
+    /// RFC 9002's time threshold (9/8 of the RTT) assumes a steady RTT. On a jittery path a sizable
+    /// share of packets arrive later than 9/8 of the smoothed RTT and are declared lost although they
+    /// are merely late; each spurious loss is a congestion event, and the connection throttles itself
+    /// well below what the path carries. Default 0 (the RFC 9002 behaviour); 4 is the PTO's multiple.
+    pub fn loss_delay_rtt_var_factor(&mut self, value: f32) -> &mut Self {
+        self.loss_delay_rtt_var_factor = value;
         self
     }
 
@@ -370,6 +383,7 @@ impl Default for TransportConfig {
 
             packet_threshold: 3,
             time_threshold: 9.0 / 8.0,
+            loss_delay_rtt_var_factor: 0.0,
             initial_rtt: Duration::from_millis(333), // per spec, intentionally distinct from EXPECTED_RTT
             initial_mtu: INITIAL_MTU,
             min_mtu: INITIAL_MTU,
@@ -407,6 +421,7 @@ impl fmt::Debug for TransportConfig {
             send_fairness,
             packet_threshold,
             time_threshold,
+            loss_delay_rtt_var_factor,
             initial_rtt,
             initial_mtu,
             min_mtu,
@@ -436,6 +451,7 @@ impl fmt::Debug for TransportConfig {
             .field("send_fairness", send_fairness)
             .field("packet_threshold", packet_threshold)
             .field("time_threshold", time_threshold)
+            .field("loss_delay_rtt_var_factor", loss_delay_rtt_var_factor)
             .field("initial_rtt", initial_rtt)
             .field("initial_mtu", initial_mtu)
             .field("min_mtu", min_mtu)

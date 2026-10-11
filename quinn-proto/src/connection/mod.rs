@@ -1661,7 +1661,11 @@ impl Connection {
         let mut lost_mtu_probe = None;
         let in_flight_mtu_probe = self.path.mtud.in_flight_mtu_probe();
         let rtt = self.path.rtt.conservative();
-        let loss_delay = cmp::max(rtt.mul_f32(self.config.time_threshold), TIMER_GRANULARITY);
+        let loss_delay = cmp::max(
+            rtt.mul_f32(self.config.time_threshold)
+                + self.path.rtt.var().mul_f32(self.config.loss_delay_rtt_var_factor),
+            TIMER_GRANULARITY,
+        );
 
         let largest_acked_packet = self.spaces[pn_space].largest_acked_packet.unwrap();
         let packet_threshold = self.config.packet_threshold as u64;
