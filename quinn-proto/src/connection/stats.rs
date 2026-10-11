@@ -153,6 +153,8 @@ pub struct PathStats {
     pub lost_plpmtud_probes: u64,
     /// The number of times a black hole was detected in the path
     pub black_holes_detected: u64,
+    /// Current RTT variance estimate (RFC 6298 rttvar)
+    pub rtt_var: Duration,
     /// Packets acknowledged after they had been declared lost (reordered, not lost)
     pub spurious_losses: u64,
     /// Reordering the path has shown, in packet numbers (`adaptive_reordering`)

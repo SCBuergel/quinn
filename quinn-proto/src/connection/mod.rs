@@ -1264,6 +1264,7 @@ impl Connection {
         let mut stats = self.stats;
         stats.path.rtt = self.path.rtt.get();
         stats.path.cwnd = self.path.congestion.window();
+        stats.path.rtt_var = self.path.rtt.var();
         stats.path.current_mtu = self.path.mtud.current_mtu();
 
         stats
