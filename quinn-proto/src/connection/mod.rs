@@ -1957,6 +1957,7 @@ impl Connection {
         spin: bool,
         is_1rtt: bool,
     ) {
+        self.stats.path.recv_packets += 1;
         self.total_authed_packets += 1;
         self.reset_keep_alive(now);
         self.reset_idle_timeout(now, space_id);
@@ -2340,6 +2341,7 @@ impl Connection {
             Err(None) => {
                 debug!("failed to authenticate packet");
                 self.authentication_failures += 1;
+                self.stats.path.auth_failures += 1;
                 let integrity_limit = self.spaces[self.highest_space]
                     .crypto
                     .as_ref()

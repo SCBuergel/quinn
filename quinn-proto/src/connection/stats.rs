@@ -155,6 +155,10 @@ pub struct PathStats {
     pub black_holes_detected: u64,
     /// Current RTT variance estimate (RFC 6298 rttvar)
     pub rtt_var: Duration,
+    /// Packets received and authenticated on this path
+    pub recv_packets: u64,
+    /// Received packets that failed authentication (decryption)
+    pub auth_failures: u64,
     /// Received packets discarded as duplicates by the packet-number window (reordered past it)
     pub dedup_dropped: u64,
     /// Pending ACK ranges dropped because more than the maximum were outstanding
