@@ -7,7 +7,7 @@ use super::{
     pacing::Pacer,
     spaces::{PacketSpace, SentPacket},
 };
-use crate::{Duration, Instant, TIMER_GRANULARITY, TransportConfig, congestion, packet::SpaceId};
+use crate::{Duration, Instant, REORDER_DECAY_LOSSES, REORDER_PACKETS_MAX, TIMER_GRANULARITY, TransportConfig, congestion, packet::SpaceId};
 
 #[cfg(feature = "qlog")]
 use qlog::events::quic::MetricsUpdated;
@@ -297,6 +297,36 @@ impl RecoveryMetrics {
 
 /// RTT estimation for a particular network path
 #[derive(Copy, Clone)]
+impl PathData {
+    /// A packet declared lost was acknowledged after all: it was reordered by `packets` packet numbers and
+    /// took `time` from sending to acknowledgement. The tolerance grows to cover it (packets capped at
+    /// `REORDER_PACKETS_MAX`) and the decay counter restarts.
+    pub(super) fn note_spurious_loss(&mut self, packets: u64, time: Duration) {
+        self.reorder_packets = cmp::min(cmp::max(self.reorder_packets, packets), REORDER_PACKETS_MAX);
+        self.reorder_time = cmp::max(self.reorder_time, time);
+        self.reorder_losses_since_spurious = 0;
+    }
+
+    /// A loss event happened. After `REORDER_DECAY_LOSSES` of them without a spurious loss the learned
+    /// tolerance steps down by a quarter (RFC 8985 §6.2 steps its window down after 16 recoveries without
+    /// a DSACK); under persistent congestion it halves at once, since a tolerance one stall taught must not
+    /// outlive the stall. The configured thresholds stay the floor, so decaying to zero only hands loss
+    /// detection back to them.
+    pub(super) fn note_loss_event(&mut self, persistent_congestion: bool) {
+        self.reorder_losses_since_spurious += 1;
+        let step = if persistent_congestion {
+            2
+        } else if self.reorder_losses_since_spurious >= REORDER_DECAY_LOSSES {
+            4
+        } else {
+            return;
+        };
+        self.reorder_packets -= self.reorder_packets / step;
+        self.reorder_time -= self.reorder_time / step;
+        self.reorder_losses_since_spurious = 0;
+    }
+}
+
 pub struct RttEstimator {
     /// The most recent RTT measurement made when receiving an ack for a previously unacked packet
     latest: Duration,
@@ -468,5 +498,49 @@ impl InFlight {
     fn remove(&mut self, packet: &SentPacket) {
         self.bytes -= u64::from(packet.size);
         self.ack_eliciting -= u64::from(packet.ack_eliciting);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn path() -> PathData {
+        PathData::new(
+            "127.0.0.1:1234".parse().unwrap(),
+            false,
+            None,
+            0,
+            Instant::now(),
+            &TransportConfig::default(),
+        )
+    }
+
+    #[test]
+    fn reordering_tolerance_is_capped_decays_and_resets() {
+        let mut p = path();
+        p.note_spurious_loss(1_000, Duration::from_millis(400));
+        assert_eq!(p.reorder_packets, REORDER_PACKETS_MAX);
+        assert_eq!(p.reorder_time, Duration::from_millis(400));
+        // fewer loss events than the decay threshold: nothing moves
+        for _ in 0..REORDER_DECAY_LOSSES - 1 {
+            p.note_loss_event(false);
+        }
+        assert_eq!(p.reorder_packets, REORDER_PACKETS_MAX);
+        // the threshold-th event steps both down by a quarter and restarts the count
+        p.note_loss_event(false);
+        assert_eq!(p.reorder_packets, 225);
+        assert_eq!(p.reorder_time, Duration::from_millis(300));
+        assert_eq!(p.reorder_losses_since_spurious, 0);
+        // a spurious loss restarts the count and only ever raises the tolerance
+        p.note_loss_event(false);
+        p.note_spurious_loss(10, Duration::from_millis(100));
+        assert_eq!(
+            (p.reorder_packets, p.reorder_time, p.reorder_losses_since_spurious),
+            (225, Duration::from_millis(300), 0)
+        );
+        // persistent congestion halves at once
+        p.note_loss_event(true);
+        assert_eq!((p.reorder_packets, p.reorder_time), (113, Duration::from_millis(150)));
     }
 }

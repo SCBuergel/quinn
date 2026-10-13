@@ -332,5 +332,12 @@ const MIN_INITIAL_SIZE: u16 = 1200;
 const INITIAL_MTU: u16 = 1200;
 const MAX_UDP_PAYLOAD: u16 = 65527;
 const TIMER_GRANULARITY: Duration = Duration::from_millis(1);
+
+/// Cap of the reordering tolerance in packets learned by `adaptive_reordering` (Linux caps `tp->reordering`
+/// at 300).
+const REORDER_PACKETS_MAX: u64 = 300;
+/// Loss events without a spurious loss after which the learned reordering tolerance decays by one step
+/// (RFC 8985 §6.2 steps `reo_wnd` down after 16 recoveries without a DSACK).
+const REORDER_DECAY_LOSSES: u32 = 16;
 /// Maximum number of streams that can be uniquely identified by a stream ID
 const MAX_STREAM_COUNT: u64 = 1 << 60;

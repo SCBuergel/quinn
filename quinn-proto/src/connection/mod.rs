@@ -1478,10 +1478,7 @@ impl Connection {
                 self.spaces[space].recently_lost.remove(&pn);
                 let packets = largest_at_loss.saturating_sub(pn) + 1;
                 let time = now.saturating_duration_since(time_sent);
-                self.path.reorder_packets =
-                    cmp::min(cmp::max(self.path.reorder_packets, packets), REORDER_PACKETS_MAX);
-                self.path.reorder_time = cmp::max(self.path.reorder_time, time);
-                self.path.reorder_losses_since_spurious = 0;
+                self.path.note_spurious_loss(packets, time);
                 self.stats.path.spurious_losses += 1;
                 trace!(
                     "spurious loss of packet {pn}: acknowledged after {time:?}, reordered by {packets} packets"
@@ -1827,17 +1824,7 @@ impl Connection {
             }
 
             if self.config.adaptive_reordering {
-                // The learned tolerance decays when losses stop being retracted (RFC 8985 §6.2), and at once
-                // under persistent congestion: a tolerance one stall taught must not outlive the stall.
-                let path = &mut self.path;
-                path.reorder_losses_since_spurious += 1;
-                if in_persistent_congestion
-                    || path.reorder_losses_since_spurious >= REORDER_DECAY_LOSSES
-                {
-                    path.reorder_packets /= 2;
-                    path.reorder_time /= 2;
-                    path.reorder_losses_since_spurious = 0;
-                }
+                self.path.note_loss_event(in_persistent_congestion);
             }
         }
 
@@ -4157,9 +4144,3 @@ mod tests {
     }
 }
 
-/// Cap of the reordering tolerance in packets learned by `adaptive_reordering` (Linux caps `tp->reordering`
-/// at 300).
-const REORDER_PACKETS_MAX: u64 = 300;
-/// Loss events without a spurious loss after which the learned reordering tolerance halves (RFC 8985 §6.2
-/// decays `reo_wnd` after 16 recoveries without a DSACK).
-const REORDER_DECAY_LOSSES: u32 = 16;
