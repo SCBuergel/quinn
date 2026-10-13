@@ -86,7 +86,7 @@ impl Cubic {
     }
 
     fn minimum_window(&self) -> u64 {
-        2 * self.current_mtu
+        (2 * self.current_mtu).max(self.config.minimum_window)
     }
 }
 
@@ -246,6 +246,8 @@ impl Controller for Cubic {
 #[derive(Debug, Clone)]
 pub struct CubicConfig {
     initial_window: u64,
+    /// Floor of the congestion window in bytes (0: quinn's 2 datagrams); see `minimum_window`.
+    minimum_window: u64,
 }
 
 impl CubicConfig {
@@ -256,12 +258,21 @@ impl CubicConfig {
         self.initial_window = value;
         self
     }
+
+    /// Floor of the congestion window: it never shrinks below this many bytes after a loss.
+    ///
+    /// A link with random (non-congestion) loss otherwise sits at a few datagrams per RTT.
+    pub fn minimum_window(&mut self, value: u64) -> &mut Self {
+        self.minimum_window = value;
+        self
+    }
 }
 
 impl Default for CubicConfig {
     fn default() -> Self {
         Self {
             initial_window: 14720.clamp(2 * BASE_DATAGRAM_SIZE, 10 * BASE_DATAGRAM_SIZE),
+            minimum_window: 0,
         }
     }
 }
