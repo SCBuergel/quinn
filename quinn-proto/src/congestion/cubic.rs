@@ -208,7 +208,9 @@ impl Controller for Cubic {
 
             self.cubic_state.cwnd_inc = 0;
 
-            self.window = self.minimum_window();
+            // Persistent congestion restarts from two datagrams (RFC 9002 §7.6.2) whatever the floor: a path
+            // that has not acknowledged anything for two PTOs has not shown it carries the floor.
+            self.window = 2 * self.current_mtu;
         }
     }
 

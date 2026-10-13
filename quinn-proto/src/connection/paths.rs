@@ -41,9 +41,14 @@ pub(super) struct PathData {
     pub(super) first_packet_after_rtt_sample: Option<(SpaceId, u64)>,
     pub(super) in_flight: InFlight,
     /// Reordering seen on this path (packets acknowledged after being declared lost): the largest distance in
-    /// packet numbers and the longest time in flight. With `adaptive_reordering` loss detection tolerates it.
+    /// packet numbers (capped at `REORDER_PACKETS_MAX`) and the longest time from sending to acknowledgement,
+    /// the peer's ack delay included, which is the span `detect_lost_packets` compares against. With
+    /// `adaptive_reordering` loss detection tolerates it; both halve after `REORDER_DECAY_LOSSES` loss events
+    /// without a spurious loss and on persistent congestion (RFC 8985 §6.2).
     pub(super) reorder_packets: u64,
     pub(super) reorder_time: Duration,
+    /// Loss events since the last spurious loss; see `reorder_packets`.
+    pub(super) reorder_losses_since_spurious: u32,
     /// Number of the first packet sent on this path
     ///
     /// Used to determine whether a packet was sent on an earlier path. Insufficient to determine if
@@ -106,6 +111,7 @@ impl PathData {
             in_flight: InFlight::new(),
             reorder_packets: 0,
             reorder_time: Duration::ZERO,
+            reorder_losses_since_spurious: 0,
             first_packet: None,
             #[cfg(feature = "qlog")]
             recovery_metrics: RecoveryMetrics::default(),
@@ -137,6 +143,7 @@ impl PathData {
             in_flight: InFlight::new(),
             reorder_packets: 0,
             reorder_time: Duration::ZERO,
+            reorder_losses_since_spurious: 0,
             first_packet: None,
             #[cfg(feature = "qlog")]
             recovery_metrics: prev.recovery_metrics.clone(),
