@@ -295,7 +295,6 @@ impl RecoveryMetrics {
     }
 }
 
-/// RTT estimation for a particular network path
 impl PathData {
     /// A packet declared lost was acknowledged after all: it was reordered by `packets` packet numbers and
     /// took `time` from sending to acknowledgement. The tolerance grows to cover it (packets capped at
@@ -326,6 +325,7 @@ impl PathData {
     }
 }
 
+/// RTT estimation for a particular network path
 #[derive(Copy, Clone)]
 pub struct RttEstimator {
     /// The most recent RTT measurement made when receiving an ack for a previously unacked packet
