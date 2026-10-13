@@ -296,7 +296,6 @@ impl RecoveryMetrics {
 }
 
 /// RTT estimation for a particular network path
-#[derive(Copy, Clone)]
 impl PathData {
     /// A packet declared lost was acknowledged after all: it was reordered by `packets` packet numbers and
     /// took `time` from sending to acknowledgement. The tolerance grows to cover it (packets capped at
@@ -314,19 +313,20 @@ impl PathData {
     /// detection back to them.
     pub(super) fn note_loss_event(&mut self, persistent_congestion: bool) {
         self.reorder_losses_since_spurious += 1;
-        let step = if persistent_congestion {
+        let step: u32 = if persistent_congestion {
             2
         } else if self.reorder_losses_since_spurious >= REORDER_DECAY_LOSSES {
             4
         } else {
             return;
         };
-        self.reorder_packets -= self.reorder_packets / step;
+        self.reorder_packets -= self.reorder_packets / u64::from(step);
         self.reorder_time -= self.reorder_time / step;
         self.reorder_losses_since_spurious = 0;
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct RttEstimator {
     /// The most recent RTT measurement made when receiving an ack for a previously unacked packet
     latest: Duration,
